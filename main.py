@@ -1,6 +1,8 @@
 import os
 import sys
 from postfix import infix_to_postfix
+from tree import Tree
+from simulator import TreeVisualizer
 
 def procesar_expresiones(nombre_archivo):
     if not os.path.exists(nombre_archivo):
@@ -16,6 +18,10 @@ def procesar_expresiones(nombre_archivo):
             resultado = infix_to_postfix(expresion)
             print(f"Expresión: {expresion}")
             print(f"Postfix: {resultado}\n")
+
+            tree = Tree(resultado)
+            visualizer = TreeVisualizer(tree, expresion)
+            visualizer.draw()
 
 
 def main():
