@@ -1,5 +1,6 @@
 import os
 import sys
+from stack import Stack
 
 CONCAT = '&'
 BINARY_OPERATORS = {'|', '^'}
@@ -60,22 +61,22 @@ def add_concatenation(regex):
 def infix_to_postfix(regex):
     tokens = add_concatenation(regex)
     output = []
-    stack = []
+    stack = Stack()
 
     for token in tokens:
         if token == '(':
-            stack.append(token)
+            stack.push(token)
         elif token == ')':
-            while stack and stack[-1] != '(': 
+            while stack and stack.peek() != '(': 
                 popped = stack.pop()
                 output.append(popped)
             if stack:
                 stack.pop()
         elif token in ALL_OPERATORS:
-            while stack and stack[-1] != '(' and precedence(stack[-1]) >= precedence(token):
+            while stack and stack.peek() != '(' and precedence(stack.peek()) >= precedence(token):
                 popped = stack.pop()
                 output.append(popped)
-            stack.append(token)
+            stack.push(token)
         else:
             output.append(token)
 
