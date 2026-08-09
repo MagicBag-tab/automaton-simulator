@@ -45,9 +45,34 @@ class SimulationState:
         return (self.step_index + 1) / max(1, self.total_steps)
 
     def load_expression(self):
-        self.tokens, self.postfix_steps = conversion_steps(self.expression)
-        postfix = self.postfix_steps[-1]["output"]
-        self.tree_build_steps = tree_steps(postfix)
+        # Tokenize original expression and expand '+'/'?' in infix form so
+        # both the INFIX row and the conversion animation use the simplified version.
+        try:
+            from postfix import tokenize, expand_infix_tokens, expand_postfix
+
+            raw_tokens = tokenize(self.expression)
+            simplified_infix_tokens = expand_infix_tokens(raw_tokens)
+            simplified_expr = "".join(simplified_infix_tokens)
+            self.tokens, self.postfix_steps = conversion_steps(simplified_expr)
+            postfix = self.postfix_steps[-1]["output"]
+            simplified_postfix = expand_postfix(postfix)
+        except Exception:
+            # fallback to original behavior on error
+            self.tokens, self.postfix_steps = conversion_steps(self.expression)
+            postfix = self.postfix_steps[-1]["output"]
+            try:
+                from postfix import expand_postfix
+
+                simplified_postfix = expand_postfix(postfix)
+            except Exception:
+                simplified_postfix = postfix
+
+        # Replace the final postfix output with the simplified version so the UI shows it
+        try:
+            self.postfix_steps[-1]["output"] = simplified_postfix
+        except Exception:
+            pass
+        self.tree_build_steps = tree_steps(simplified_postfix)
         self.phase = "postfix"
         self.step_index = 0
         self.timer = 0.0

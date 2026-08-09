@@ -130,3 +130,103 @@ def _validate(tokens):
         raise RegexSyntaxError("Hay paréntesis sin cerrar")
     if expects_operand:
         raise RegexSyntaxError("La expresión termina con un operador")
+
+
+def expand_infix_tokens(tokens):
+    """Return a new token list where '+' and '?' are expanded in infix form.
+
+    Rules:
+    - X+  -> ( X X* )
+    - X?  -> ( X | ε )
+
+    `tokens` should be the raw list from `tokenize()`.
+    """
+    result = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ('+', '?'):
+            if not result:
+                raise RegexSyntaxError(f"Falta un operando para '{tok}' al expandir infix")
+            # find the last operand in result
+            if result[-1] == ')':
+                # find matching '('
+                depth = 0
+                j = len(result) - 1
+                while j >= 0:
+                    if result[j] == ')':
+                        depth += 1
+                    elif result[j] == '(':
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    j -= 1
+                if j < 0:
+                    raise RegexSyntaxError(f"Paréntesis no balanceados al expandir '{tok}'")
+                operand = result[j:]
+                result = result[:j]
+            else:
+                operand = [result.pop()]
+
+            if tok == '+':
+                expanded = ['('] + operand + operand + ['*'] + [')']
+            else:  # '?'
+                expanded = ['('] + operand + ['|', 'ε'] + [')']
+
+            result.extend(expanded)
+            i += 1
+        else:
+            result.append(tok)
+            i += 1
+
+    return result
+
+
+def expand_postfix(tokens):
+    """Return a new postfix token list where '+' and '?' are expanded:
+    - r+ -> r r * &  (operand, operand, '*', concat)
+    - r? -> r ε |
+    The function works on raw tokens produced by `conversion_steps` (uses CONCAT).
+    """
+    stack = []
+    for tok in tokens:
+        if tok == '+':
+            if not stack:
+                raise RegexSyntaxError("Falta un operando para '+' al expandir postfix")
+            s = stack.pop()
+            cloned = list(s)
+            # r+ -> r r* &  (we use CONCAT token for concatenation)
+            combined = s + cloned + ['*', CONCAT]
+            stack.append(combined)
+        elif tok == '?':
+            if not stack:
+                raise RegexSyntaxError("Falta un operando para '?' al expandir postfix")
+            s = stack.pop()
+            # r? -> r ε |
+            combined = s + ['ε', '|']
+            stack.append(combined)
+        elif tok in UNARY_OPERATORS | BINARY_OPERATORS:
+            if tok in UNARY_OPERATORS:
+                if not stack:
+                    raise RegexSyntaxError(f"Falta un operando para '{tok}' al expandir postfix")
+                s = stack.pop()
+                stack.append(s + [tok])
+            else:
+                # binary operator: pop right then left
+                if len(stack) < 2:
+                    raise RegexSyntaxError(f"Faltan operandos para '{tok}' al expandir postfix")
+                right = stack.pop()
+                left = stack.pop()
+                stack.append(left + right + [tok])
+        else:
+            # operand
+            stack.append([tok])
+
+    if not stack:
+        return []
+    # there may be multiple items if original postfix represented multiple expressions;
+    # merge them by concatenating their lists
+    result = []
+    for part in stack:
+        result.extend(part)
+    return result

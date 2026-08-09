@@ -272,8 +272,16 @@ class VisualizerApp:
         step = self.state.postfix_step
         infix_row = pygame.Rect(rect.x + PANEL_PADDING, rect.y + 34, rect.width - PANEL_PADDING * 2, 38)
         postfix_row = pygame.Rect(rect.x + PANEL_PADDING, rect.y + 81, rect.width - PANEL_PADDING * 2, 38)
+        # Show INFIX progression but always display the simplified POSTFIX (expanded '+' and '?')
         self._draw_conversion_row("INFIX", self.state.tokens, infix_row, step["active_tok"])
-        self._draw_conversion_row("POSTFIX", step["output"], postfix_row)
+        try:
+            final_output = self.state.postfix_steps[-1]["output"]
+        except Exception:
+            final_output = step["output"]
+        # If we are in the postfix conversion phase, show the animated current output;
+        # otherwise show the final simplified postfix.
+        postfix_tokens = step["output"] if self.state.phase == "postfix" else final_output
+        self._draw_conversion_row("POSTFIX", postfix_tokens, postfix_row)
 
     def _draw_conversion_row(self, label, tokens, rect, active_index=None):
         rounded_rect(self.canvas, PANEL_MUTED, rect, radius=12, border=1, border_color=BORDER)
