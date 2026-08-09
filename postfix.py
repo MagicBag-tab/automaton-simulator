@@ -1,90 +1,132 @@
-import os
-import sys
-from stack import Stack
+CONCAT = "&"
+UNARY_OPERATORS = {"*", "+", "?"}
+BINARY_OPERATORS = {"|", "^", CONCAT}
+OPERATORS = UNARY_OPERATORS | BINARY_OPERATORS | {"(", ")"}
 
-CONCAT = '&'
-BINARY_OPERATORS = {'|', '^'}
-UNARY_OPERATORS = {'*', '+', '?'}
-ALL_OPERATORS = BINARY_OPERATORS | UNARY_OPERATORS | {'(', ')', CONCAT}
+
+class RegexSyntaxError(ValueError):
+    pass
 
 
 def format_token(token):
-    return '.' if token == CONCAT else token
+    return "." if token == CONCAT else token
 
 
-def precedence(token):
-    if token == '(': 
-        return 1
-    if token == '|':
-        return 2
-    if token == CONCAT:
-        return 3
-    if token in UNARY_OPERATORS:
-        return 4
-    if token == '^':
-        return 5
-    return 0
-
-
-def _is_symbol(token):
-    return token not in ALL_OPERATORS or token.startswith('\\')
-
-
-def add_concatenation(regex):
-    regex = regex.replace(' ', '')
+def tokenize(expression):
+    compact = expression.replace(" ", "")
     tokens = []
-    i = 0
-
-    while i < len(regex):
-        if regex[i] == '\\' and i + 1 < len(regex):
-            tokens.append(regex[i:i + 2])
-            i += 2
+    index = 0
+    while index < len(compact):
+        if compact[index] == "\\":
+            if index + 1 == len(compact):
+                raise RegexSyntaxError("La expresión termina con un escape incompleto")
+            tokens.append(compact[index:index + 2])
+            index += 2
         else:
-            tokens.append(regex[i])
-            i += 1
-
-    formatted = []
-    for idx, token in enumerate(tokens):
-        formatted.append(token)
-        if idx + 1 == len(tokens):
-            break
-
-        next_token = tokens[idx + 1]
-        if (_is_symbol(token) or token == ')' or token in UNARY_OPERATORS) and (
-            _is_symbol(next_token) or next_token == '('
-        ):
-            formatted.append(CONCAT)
-
-    return formatted
+            tokens.append(compact[index])
+            index += 1
+    return tokens
 
 
-def infix_to_postfix(regex):
-    tokens = add_concatenation(regex)
+def add_concatenation(tokens):
+    result = []
+    for index, token in enumerate(tokens):
+        result.append(token)
+        if index + 1 == len(tokens):
+            continue
+        following = tokens[index + 1]
+        left_can_end = _is_symbol(token) or token == ")" or token in UNARY_OPERATORS
+        right_can_start = _is_symbol(following) or following == "("
+        if left_can_end and right_can_start:
+            result.append(CONCAT)
+    return result
+
+
+def conversion_steps(expression):
+    tokens = add_concatenation(tokenize(expression))
+    if not tokens:
+        raise RegexSyntaxError("La expresión está vacía")
+    _validate(tokens)
     output = []
-    stack = Stack()
+    stack = []
+    steps = []
 
-    for token in tokens:
-        if token == '(':
-            stack.push(token)
-        elif token == ')':
-            while stack and stack.peek() != '(': 
+    def capture(action, active_token):
+        steps.append({
+            "action": action,
+            "active_tok": active_token,
+            "stack": list(stack),
+            "output": list(output),
+        })
+
+    for index, token in enumerate(tokens):
+        if token == "(":
+            stack.append(token)
+            capture("Agregar '(' a la pila", index)
+        elif token == ")":
+            while stack and stack[-1] != "(":
                 popped = stack.pop()
                 output.append(popped)
-            if stack:
-                stack.pop()
-        elif token in ALL_OPERATORS:
-            while stack and stack.peek() != '(' and precedence(stack.peek()) >= precedence(token):
+                capture(f"Mover '{format_token(popped)}' a la salida", index)
+            stack.pop()
+            capture("Descartar '('", index)
+        elif token in UNARY_OPERATORS | BINARY_OPERATORS:
+            while stack and stack[-1] != "(" and _precedence(stack[-1]) >= _precedence(token):
                 popped = stack.pop()
                 output.append(popped)
-            stack.push(token)
+                capture(f"Mover '{format_token(popped)}' a la salida", index)
+            stack.append(token)
+            capture(f"Agregar '{format_token(token)}' a la pila", index)
         else:
             output.append(token)
+            capture(f"Mover '{format_token(token)}' a la salida", index)
 
     while stack:
         popped = stack.pop()
         output.append(popped)
+        capture(f"Vaciar '{format_token(popped)}' a la salida", len(tokens) - 1)
+    return tokens, steps
 
-    rendered = [format_token(token) for token in output]
-    return ' '.join(rendered)
 
-
+def infix_to_postfix(expression):
+    _, steps = conversion_steps(expression)
+    return " ".join(format_token(token) for token in steps[-1]["output"])
+
+
+def _is_symbol(token):
+    return token not in OPERATORS or token.startswith("\\")
+
+
+def _precedence(token):
+    levels = {"(": 1, "|": 2, CONCAT: 3, "*": 4, "+": 4, "?": 4, "^": 5}
+    return levels.get(token, 0)
+
+
+def _validate(tokens):
+    balance = 0
+    expects_operand = True
+    for token in tokens:
+        if token == "(":
+            balance += 1
+            expects_operand = True
+        elif token == ")":
+            if balance == 0 or expects_operand:
+                raise RegexSyntaxError("Paréntesis inválidos")
+            balance -= 1
+            expects_operand = False
+        elif token in BINARY_OPERATORS:
+            if expects_operand:
+                raise RegexSyntaxError(f"El operador '{format_token(token)}' no tiene operando izquierdo")
+            expects_operand = True
+        elif token in UNARY_OPERATORS:
+            if expects_operand:
+                raise RegexSyntaxError(f"El operador '{token}' no tiene operando")
+            expects_operand = False
+        else:
+            if not expects_operand:
+                raise RegexSyntaxError("Falta un operador entre símbolos")
+            expects_operand = False
+    if balance:
+        raise RegexSyntaxError("Hay paréntesis sin cerrar")
+    if expects_operand:
+        raise RegexSyntaxError("La expresión termina con un operador")
