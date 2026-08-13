@@ -3,7 +3,7 @@
 Este repositorio contiene una herramienta para convertir expresiones regulares (infix) a postfix, mostrar la conversión paso a paso y construir/visualizar el árbol sintáctico.
 
 Video de demostración:
-https://youtu.be/G1JCtFw-vEM
+
 
 Cómo usar
 
